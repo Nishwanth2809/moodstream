@@ -31,8 +31,8 @@ def callback():
     response = requests.post("https://accounts.spotify.com/api/token", data=token_data)
     token_info = response.json()
 
-    session["access_token"] = token_info["access_token"]
-    session["refresh_token"] = token_info["refresh_token"]
-    session["expires_at"] = time.time() + token_info["expires_in"]
+    session["access_token"] = token_info.get("access_token")
+    session["refresh_token"] = token_info.get("refresh_token")
+    session["expires_at"] = time.time() + token_info.get("expires_in", 3600)
 
     return redirect(url_for("main.home"))
