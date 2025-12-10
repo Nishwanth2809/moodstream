@@ -93,6 +93,20 @@ def callback():
     except Exception as e:
         return f"<h1>Error</h1><p>{str(e)}</p>", 500
 
+# Debug route to help diagnose Vercel issues
+@app.route('/debug')
+def debug():
+    import os
+    import glob
+    env_vars = {k: v for k, v in os.environ.items() if k.startswith('SPOTIFY') or k.startswith('FLASK')}
+    template_files = glob.glob(os.path.join(app.root_path, '../templates/*'))
+    return {
+        'env_vars': env_vars,
+        'template_files': template_files,
+        'cwd': os.getcwd(),
+        'root_path': app.root_path
+    }, 200
+
 
 
 
