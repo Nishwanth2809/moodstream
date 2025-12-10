@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moodstream"
+version = "1.0.0"
+description = "Mood-based music recommendation app"
+
+[tool.poetry.dependencies]
+python = "^3.11"
