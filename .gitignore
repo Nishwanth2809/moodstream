@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+
+# Audio/temporary files
+*.wav
+*.webm
+temp_audio.*
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
