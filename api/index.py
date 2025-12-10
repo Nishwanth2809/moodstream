@@ -1,66 +1,73 @@
 import sys
 import os
-from urllib.parse import unquote
-from io import BytesIO
+from urllib.parse import unquote, parse_qs
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import app
+from werkzeug.test import EnvironBuilder
+from werkzeug.wrappers import Request
 
 def handler(event, context):
     """
     Netlify Functions handler for Flask app
     """
-    # Parse the request
-    http_method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
-    query_string = event.get('queryStringParameters', {})
-    headers = event.get('headers', {})
-    body = event.get('body', '')
+    try:
+        http_method = event.get('httpMethod', 'GET')
+        path = event.get('path', '/')
+        headers = event.get('headers', {})
+        body = event.get('body', '')
+        
+        # Build the environ using werkzeug
+        builder = EnvironBuilder(
+            method=http_method,
+            path=path,
+            data=body if body else None,
+            headers=headers,
+            environ_base={
+                'wsgi.url_scheme': headers.get('x-forwarded-proto', 'https'),
+            }
+        )
+        
+        environ = builder.get_environ()
+        
+        # Capture response
+        response_data = []
+        status = None
+        response_headers = []
+        
+        def start_response(status_str, headers_list):
+            nonlocal status, response_headers
+            status = status_str
+            response_headers = headers_list
+            return lambda x: None
+        
+        # Call the Flask app
+        app_iter = app(environ, start_response)
+        
+        try:
+            response_data = [line for line in app_iter]
+        finally:
+            if hasattr(app_iter, 'close'):
+                app_iter.close()
+        
+        # Extract status code
+        status_code = int(status.split(' ', 1)[0]) if status else 200
+        
+        # Convert response to string
+        body_content = b''.join(response_data)
+        
+        return {
+            'statusCode': status_code,
+            'headers': dict(response_headers),
+            'body': body_content.decode('utf-8') if isinstance(body_content, bytes) else body_content,
+        }
     
-    # Build the WSGI environ
-    environ = {
-        'REQUEST_METHOD': http_method,
-        'SCRIPT_NAME': '',
-        'PATH_INFO': unquote(path),
-        'QUERY_STRING': '&'.join([f'{k}={v}' for k, v in (query_string or {}).items()]),
-        'CONTENT_TYPE': headers.get('content-type', ''),
-        'CONTENT_LENGTH': len(body) if body else 0,
-        'SERVER_NAME': headers.get('host', 'localhost').split(':')[0],
-        'SERVER_PORT': '443',
-        'SERVER_PROTOCOL': 'HTTP/1.1',
-        'wsgi.version': (1, 0),
-        'wsgi.url_scheme': headers.get('x-forwarded-proto', 'https'),
-        'wsgi.input': BytesIO(body.encode() if isinstance(body, str) else body),
-        'wsgi.errors': sys.stderr,
-        'wsgi.multithread': False,
-        'wsgi.multiprocess': False,
-        'wsgi.run_once': True,
-    }
-    
-    # Add headers to environ
-    for header_name, header_value in headers.items():
-        header_name = header_name.upper().replace('-', '_')
-        if header_name not in ('CONTENT_TYPE', 'CONTENT_LENGTH'):
-            environ[f'HTTP_{header_name}'] = header_value
-    
-    # Response handler
-    status_code = None
-    response_headers = {}
-    
-    def start_response(status, response_headers_list):
-        nonlocal status_code, response_headers
-        status_code = int(status.split(' ')[0])
-        response_headers = dict(response_headers_list)
-        return lambda s: None
-    
-    # Call Flask app
-    response_data = app(environ, start_response)
-    response_body = b''.join(response_data)
-    
-    return {
-        'statusCode': status_code or 200,
-        'headers': response_headers,
-        'body': response_body.decode('utf-8') if isinstance(response_body, bytes) else response_body,
-    }
+    except Exception as e:
+        import traceback
+        return {
+            'statusCode': 500,
+            'headers': {'Content-Type': 'text/plain'},
+            'body': f'Error: {str(e)}\n\n{traceback.format_exc()}',
+        }

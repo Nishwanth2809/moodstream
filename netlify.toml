@@ -7,7 +7,31 @@ publish = "."
 PYTHON_VERSION = "3.9"
 
 [[redirects]]
-from = "/*"
-to = "/.netlify/functions/handler"
+from = "/"
+to = "/.netlify/functions/index"
 status = 200
-force = false
+
+[[redirects]]
+from = "/text"
+to = "/.netlify/functions/index"
+status = 200
+
+[[redirects]]
+from = "/voice"
+to = "/.netlify/functions/index"
+status = 200
+
+[[redirects]]
+from = "/login"
+to = "/.netlify/functions/index"
+status = 200
+
+[[redirects]]
+from = "/callback"
+to = "/.netlify/functions/index"
+status = 200
+
+[[redirects]]
+from = "/*"
+to = "/.netlify/functions/index"
+status = 200
