@@ -1,16 +1,18 @@
-import librosa
+from pydub import AudioSegment
 import numpy as np
 
 def extract_audio_features(file_path):
-    try:
-        y, sr = librosa.load(file_path, sr=16000)
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    audio = AudioSegment.from_file(file_path)
+    samples = np.array(audio.get_array_of_samples())
 
-        # Pitch extraction (safe)
-        f0 = librosa.yin(y, fmin=50, fmax=500)
-        pitch = np.median(f0[f0 > 0]) if np.any(f0 > 0) else 0
+    # Tempo estimation (very basic amplitude peaks)
+    amplitude = np.abs(samples)
+    peaks = np.where(amplitude > amplitude.mean() * 1.5)[0]
+    tempo = len(peaks) / (len(samples) / audio.frame_rate)
 
-        return round(float(tempo), 2), round(float(pitch), 2)
-    except Exception as e:
-        print(f"Audio feature extraction failed: {e}")
-        return 0, 0
+    # Pitch estimation (FFT peak)
+    fft = np.fft.fft(samples)
+    freqs = np.fft.fftfreq(len(fft))
+    peak_freq = abs(freqs[np.argmax(np.abs(fft))]) * audio.frame_rate
+
+    return round(tempo, 2), round(peak_freq, 2)

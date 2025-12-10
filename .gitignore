@@ -3,23 +3,43 @@ __pycache__/
 *.py[cod]
 *.so
 
-# Virtual environment
+# Virtual environments
+.venv/
 venv/
 ENV/
 env/
 
+# Python build / distribution
+build/
+dist/
+*.egg-info/
+
 # Environment variables
 .env
+.env.*
 
-# Audio/temporary files
+# Audio / temporary files
 *.wav
 *.webm
 temp_audio.*
+*.mp3
 
-# IDE/editor files
+# Uploads / cache
+uploads/
+cache/
+
+# IDE / editor
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
 
 # System files
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+
+# Render / deployment temporary folders
+.mesonpy*/
