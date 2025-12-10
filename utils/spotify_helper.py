@@ -23,13 +23,22 @@ def get_songs_by_mood_and_language(mood, language="english"):
 
     try:
         results = sp.playlist_items(playlist_id)
-        songs = [{
-            "name": item["track"]["name"],
-            "artist": item["track"]["artists"][0]["name"],
-            "cover": item["track"]["album"]["images"][0]["url"],
-            "spotify_uri": item["track"]["uri"],
-            "spotify_url": item["track"]["external_urls"]["spotify"]
-        } for item in results["items"] if "track" in item]
+        items = results.get("items", [])
+
+        songs = []
+        for item in items:
+            track = item.get("track")
+            if not track:
+                continue
+            songs.append({
+                "name": track["name"],
+                "artist": track["artists"][0]["name"],
+                "cover": track["album"]["images"][0]["url"],
+                "spotify_uri": track["uri"],
+                "spotify_url": track["external_urls"]["spotify"]
+            })
+
         return random.sample(songs, min(3, len(songs))) if songs else []
-    except:
+    except Exception as e:
+        print(f"Spotify API error: {e}")
         return []
