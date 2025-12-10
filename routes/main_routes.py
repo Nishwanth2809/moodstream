@@ -2,16 +2,10 @@ from flask import Blueprint, request, jsonify, render_template
 from utils.mood_analysis import analyze_mood_with_audio
 from utils.audio_features import extract_audio_features
 from utils.spotify_helper import get_songs_by_mood_and_language
-import base64
-import io
+import base64, io, os
 from pydub import AudioSegment
-import whisper
-import os
 
 main_bp = Blueprint("main", __name__)
-
-# Load Whisper once globally
-whisper_model = whisper.load_model("tiny.en")
 
 @main_bp.route("/")
 def home():
@@ -22,28 +16,38 @@ def text_input():
     data = request.get_json()
     text = data.get("text", "")
     language = data.get("language", "english").lower()
+
     mood = analyze_mood_with_audio(text)
     songs = get_songs_by_mood_and_language(mood, language)
-    return jsonify({"text": text, "mood": mood, "songs": songs})
+
+    return jsonify({
+        "text": text,
+        "mood": mood,
+        "songs": songs
+    })
 
 @main_bp.route("/voice", methods=["POST"])
 def voice_input():
     try:
         data = request.get_json()
-        audio_base64 = data.get("file")
+
+        text = data.get("text", "").strip()
+        audio_b64 = data.get("audio", "")
         language = data.get("language", "english").lower()
 
-        audio_data = base64.b64decode(audio_base64)
-        audio = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
+        if not text or not audio_b64:
+            return jsonify({"error": "Missing audio/text"}), 400
+
+        # Decode audio
+        audio_bytes = base64.b64decode(audio_b64)
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
         audio = audio.set_frame_rate(16000).set_channels(1)
 
-        file_path = "temp_audio.wav"
+        file_path = "temp_voice.wav"
         audio.export(file_path, format="wav")
 
+        # Extract features
         tempo, pitch = extract_audio_features(file_path)
-
-        result = whisper_model.transcribe(file_path)
-        text = result["text"]
 
         mood = analyze_mood_with_audio(text, tempo, pitch)
         songs = get_songs_by_mood_and_language(mood, language)
