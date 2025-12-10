@@ -22,7 +22,7 @@ git push origin main
 1. Go to [vercel.com](https://vercel.com)
 2. Click "New Project"
 3. Select "Import Git Repository"
-4. Connect your GitHub account and select your repository
+4. Connect your GitHub account and select your `moodstream` repository
 5. Framework preset: Select "Other" (it's a Python Flask app)
 
 ### Step 3: Set Environment Variables
