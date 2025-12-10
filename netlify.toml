@@ -5,3 +5,9 @@ publish = "."
 
 [build.environment]
 PYTHON_VERSION = "3.9"
+
+[[redirects]]
+from = "/*"
+to = "/.netlify/functions/handler"
+status = 200
+force = false
