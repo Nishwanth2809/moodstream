@@ -9,11 +9,9 @@ load_dotenv()
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.getenv("FLASK_SECRET", "default_secret_key")
 app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
 
+Session(app)
 register_routes(app)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render dynamically assigns a port
-    app.run(host="0.0.0.0", port=port)        # Required on Render
-
+    app.run(host="0.0.0.0", port=5000)
