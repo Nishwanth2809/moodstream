@@ -6,12 +6,17 @@ from routes import register_routes
 
 load_dotenv()
 
-app = Flask(__name__, template_folder="templates")
-app.secret_key = os.getenv("FLASK_SECRET", "default_secret_key")
-app.config["SESSION_TYPE"] = "filesystem"
+def create_app():
+    app = Flask(__name__, template_folder="templates")
+    app.secret_key = os.getenv("FLASK_SECRET", "default_secret_key")
+    app.config["SESSION_TYPE"] = "filesystem"
 
-Session(app)
-register_routes(app)
+    Session(app)
+    register_routes(app)
+
+    return app
+
+app = create_app()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

@@ -35,4 +35,5 @@ def callback():
     session["refresh_token"] = token_info.get("refresh_token")
     session["expires_at"] = time.time() + token_info.get("expires_in", 3600)
 
-    return redirect(url_for("main.home"))
+    # Redirect to the home endpoint on the main blueprint
+    return redirect(url_for("main_bp.home"))
