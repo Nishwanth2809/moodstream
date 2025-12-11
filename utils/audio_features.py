@@ -1,18 +1,29 @@
-from pydub import AudioSegment
+import wave
 import numpy as np
 
 def extract_audio_features(file_path):
-    audio = AudioSegment.from_file(file_path)
-    samples = np.array(audio.get_array_of_samples())
+    with wave.open(file_path, "rb") as wav_file:
+        n_channels = wav_file.getnchannels()
+        framerate = wav_file.getframerate()
+        n_frames = wav_file.getnframes()
+        audio_frames = wav_file.readframes(n_frames)
 
-    # Tempo estimation (very basic amplitude peaks)
-    amplitude = np.abs(samples)
-    peaks = np.where(amplitude > amplitude.mean() * 1.5)[0]
-    tempo = len(peaks) / (len(samples) / audio.frame_rate)
+    audio = np.frombuffer(audio_frames, dtype=np.int16)
 
-    # Pitch estimation (FFT peak)
-    fft = np.fft.fft(samples)
-    freqs = np.fft.fftfreq(len(fft))
-    peak_freq = abs(freqs[np.argmax(np.abs(fft))]) * audio.frame_rate
+    if n_channels == 2:
+        audio = audio.reshape(-1, 2).mean(axis=1)
+
+    audio = audio.astype(np.float32)
+    audio /= np.max(np.abs(audio)) + 1e-6
+
+    amplitude = np.abs(audio)
+    peaks = np.where(amplitude > amplitude.mean() * 2.0)[0]
+    duration = len(audio) / framerate
+    tempo = len(peaks) / duration if duration > 0 else 0
+
+    fft = np.fft.fft(audio)
+    freqs = np.fft.fftfreq(len(fft), 1 / framerate)
+    peak_idx = np.argmax(np.abs(fft[:len(fft)//2]))
+    peak_freq = abs(freqs[peak_idx])
 
     return round(tempo, 2), round(peak_freq, 2)
