@@ -11,74 +11,56 @@
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-    <!-- Browser Whisper (Xenova) -->
+    <!-- Browser Whisper -->
     <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
 
     <style>
         body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #1e1e2e;
+            font-family: Arial;
+            background: #1e1e2e;
             color: white;
-            margin: 0;
+            text-align: center;
             padding: 0;
+            margin: 0;
         }
-
-        h1 {
-            margin-top: 20px;
-        }
-
-        input[type="text"], select {
+        input, select {
             padding: 10px;
             width: 60%;
+            margin: 10px 0;
             font-size: 16px;
             border-radius: 5px;
             border: none;
-            margin: 10px 0;
         }
-
         button {
             padding: 12px 20px;
-            font-size: 16px;
+            border-radius: 5px;
             border: none;
             cursor: pointer;
-            border-radius: 5px;
             margin: 5px;
         }
-
         #recordButton {
-            background-color: #ff4757;
+            background: #ff4757;
             color: white;
         }
-
         #recordButton.recording {
-            background-color: #2ed573;
+            background: #2ed573;
         }
-
         #loading {
-            display: none;
-            margin-top: 15px;
             font-size: 16px;
+            margin-top: 15px;
+            display: none;
         }
-
-        #moodResult {
-            font-size: 22px;
-            font-weight: bold;
-            margin-top: 20px;
-        }
-
         .song {
-            background-color: #2c2c54;
+            background: #2c2c54;
             padding: 10px;
             margin: 10px auto;
+            border-radius: 8px;
             width: 90%;
             max-width: 400px;
-            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
-
         .song img {
             width: 50px;
             height: 50px;
@@ -89,49 +71,50 @@
 
 <body>
 
-    <h1>Moodify: Let Your Mood Choose the Music</h1>
+<h1>Moodify: Let Your Mood Choose the Music</h1>
 
-    <input type="text" id="textInput" placeholder="Type something..." />
-    <br>
+<input type="text" id="textInput" placeholder="Type something..." />
 
-    <select id="languageSelect">
-        <option value="english">English</option>
-        <option value="hindi">Hindi</option>
-        <option value="telugu">Telugu</option>
-    </select>
-    <br>
+<select id="languageSelect">
+    <option value="english">English</option>
+    <option value="hindi">Hindi</option>
+    <option value="telugu">Telugu</option>
+</select>
 
-    <button onclick="analyzeText()">Analyze Text</button>
-    <button id="recordButton">🎙 Start Recording</button>
+<br>
+<button onclick="analyzeText()">Analyze Text</button>
+<button id="recordButton">🎙 Start Recording</button>
 
-    <p id="loading">Processing... Please wait 🔄</p>
+<p id="loading">Processing... Please wait 🔄</p>
 
-    <div id="moodResult"></div>
-    <div id="songList"></div>
-
+<div id="moodResult"></div>
+<div id="songList"></div>
 
 <script>
+let whisperPipe;
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
 
 // Load Whisper ONCE
-let whisperModel;
 async function loadWhisper() {
-    if (!whisperModel) {
-        whisperModel = await transformers.WhisperModel.from_pretrained("Xenova/whisper-tiny.en");
-        console.log("Whisper model loaded.");
+    if (!whisperPipe) {
+        whisperPipe = await transformers.pipeline(
+            "automatic-speech-recognition",
+            "Xenova/whisper-tiny.en"
+        );
+        console.log("Whisper loaded.");
     }
 }
 
 /* ------------------------------
-   TEXT INPUT
+    TEXT INPUT
 ------------------------------ */
 function analyzeText() {
     let text = $("#textInput").val().trim();
     let language = $("#languageSelect").val();
 
-    if (!text) return alert("Enter some text.");
+    if (!text) return alert("Enter some text");
 
     $("#loading").show();
     $("#moodResult").empty();
@@ -141,15 +124,15 @@ function analyzeText() {
         url: "/text",
         type: "POST",
         contentType: "application/json",
-        data: JSON.stringify({ text: text, language: language }),
+        data: JSON.stringify({ text, language }),
         success: displayResults
     }).always(() => $("#loading").hide());
 }
 
 /* ------------------------------
-   VOICE INPUT (Browser Whisper)
+    VOICE INPUT
 ------------------------------ */
-$("#recordButton").click(async function () {
+$("#recordButton").click(async () => {
     if (!isRecording) startRecording();
     else stopRecording();
 });
@@ -182,38 +165,27 @@ async function processRecording() {
 
     let audioBlob = new Blob(audioChunks, { type: "audio/webm" });
 
-    // Convert to array buffer for Whisper
-    let buffer = await audioBlob.arrayBuffer();
-    let floatAudio = new Float32Array(buffer);
+    // Convert blob to form Whisper input
+    const audioBuffer = await audioBlob.arrayBuffer();
+    const audioData = new Float32Array(audioBuffer);
 
-    // Whisper transcription
-    const result = await whisperModel.generate({ audio: floatAudio });
-    let text = result.text;
-    let language = $("#languageSelect").val();
+    // Run Whisper on browser
+    const result = await whisperPipe(audioData);
+    const text = result.text.trim();
+    const language = $("#languageSelect").val();
 
-    // Convert audio to base64 for backend pitch/tempo
-    let reader = new FileReader();
-    reader.onloadend = () => {
-        let base64Audio = reader.result.split(",")[1];
-
-        $.ajax({
-            url: "/voice",
-            type: "POST",
-            contentType: "application/json",
-            data: JSON.stringify({
-                text: text,
-                audio: base64Audio,
-                language: language
-            }),
-            success: displayResults
-        }).always(() => $("#loading").hide());
-    };
-
-    reader.readAsDataURL(audioBlob);
+    // Send only text to backend
+    $.ajax({
+        url: "/voice",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ text, language }),
+        success: displayResults
+    }).always(() => $("#loading").hide());
 }
 
 /* ------------------------------
-   DISPLAY RESULTS
+    DISPLAY RESULTS
 ------------------------------ */
 function displayResults(response) {
     if (response.error) {
@@ -229,9 +201,7 @@ function displayResults(response) {
         $("#songList").append(`
             <div class="song">
                 <img src="${s.cover}">
-                <div>
-                    <b>${s.name}</b><br>${s.artist}
-                </div>
+                <div><b>${s.name}</b><br>${s.artist}</div>
                 <a href="${s.spotify_url}" target="_blank">▶</a>
             </div>
         `);
