@@ -30,29 +30,23 @@ def text_input():
 def voice_input():
     try:
         data = request.get_json()
+        text = data.get("text", "")
+        audio_base64 = data.get("audio", "")
+        language = data.get("language", "english")
 
-        text = data.get("text", "").strip()
-        audio_b64 = data.get("audio", "")
-        language = data.get("language", "english").lower()
+        # Audio decoding for pitch/tempo only
+        audio_data = base64.b64decode(audio_base64)
+        file_path = "temp_audio.wav"
+        with open(file_path, "wb") as f:
+            f.write(audio_data)
 
-        if not text or not audio_b64:
-            return jsonify({"error": "Missing audio/text"}), 400
-
-        # Decode audio
-        audio_bytes = base64.b64decode(audio_b64)
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
-        audio = audio.set_frame_rate(16000).set_channels(1)
-
-        file_path = "temp_voice.wav"
-        audio.export(file_path, format="wav")
-
-        # Extract features
         tempo, pitch = extract_audio_features(file_path)
 
         mood = analyze_mood_with_audio(text, tempo, pitch)
         songs = get_songs_by_mood_and_language(mood, language)
 
-        os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
         return jsonify({
             "text": text,
