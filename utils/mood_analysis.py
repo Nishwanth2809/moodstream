@@ -65,3 +65,5 @@ def simple_mood_analysis(text, tempo=0, avg_pitch=0):
     if any(w in lower for w in ["happy", "joy", "great"]):
         return "happy"
     return "neutral"
+
+
