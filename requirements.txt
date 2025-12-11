@@ -7,3 +7,4 @@ gunicorn==21.2.0
 Werkzeug==2.3.7
 nltk==3.8.1
 numpy==1.26.4
+faster-whisper==0.10.0

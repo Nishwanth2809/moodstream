@@ -3,6 +3,7 @@ import base64
 import tempfile
 import subprocess
 from flask import Blueprint, request, jsonify, render_template
+from faster_whisper import WhisperModel
 
 from utils.mood_analysis import analyze_mood_with_audio
 from utils.audio_features import extract_audio_features
@@ -10,8 +11,12 @@ from utils.spotify_recommender import get_recommendations
 
 main_bp = Blueprint("main_bp", __name__)
 
+# Load whisper model ONCE
+model = WhisperModel("tiny", device="cpu", compute_type="int8")
+
+
 # ------------------------------
-#   HOME ROUTE (IMPORTANT)
+#   HOME ROUTE
 # ------------------------------
 @main_bp.route("/")
 def home():
@@ -33,10 +38,7 @@ def analyze_text():
     mood = analyze_mood_with_audio(text)
     songs = get_recommendations(mood, language)
 
-    return jsonify({
-        "mood": mood,
-        "songs": songs
-    })
+    return jsonify({"mood": mood, "songs": songs})
 
 
 # ------------------------------
@@ -46,46 +48,62 @@ def analyze_text():
 def analyze_voice():
     data = request.get_json(silent=True) or {}
 
-    text = data.get("text", "").strip()
     audio_b64 = data.get("audio", "")
     language = data.get("language", "english")
 
-    if not audio_b64 and not text:
-        return jsonify({"error": "No audio or text provided"}), 400
+    if not audio_b64:
+        return jsonify({"error": "No audio provided"}), 400
 
     temp_webm = None
     temp_wav = None
 
     try:
-        if audio_b64:
-            audio_bytes = base64.b64decode(audio_b64)
+        # ------------------------------
+        # 1. Decode base64 → webm file
+        # ------------------------------
+        audio_bytes = base64.b64decode(audio_b64)
 
-            temp_webm = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
-            temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        temp_webm = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
+        temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
 
-            temp_webm.close()
-            temp_wav.close()
+        with open(temp_webm.name, "wb") as f:
+            f.write(audio_bytes)
 
-            with open(temp_webm.name, "wb") as f:
-                f.write(audio_bytes)
+        # ------------------------------
+        # 2. Convert webm → wav (ffmpeg)
+        # ------------------------------
+        proc = subprocess.run([
+            "ffmpeg", "-y",
+            "-i", temp_webm.name,
+            "-ac", "1",      # mono
+            "-ar", "16000",  # sample rate
+            temp_wav.name
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
-            proc = subprocess.run([
-                "ffmpeg", "-y",
-                "-i", temp_webm.name,
-                "-ac", "1",
-                "-ar", "16000",
-                temp_wav.name
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            err = proc.stderr.decode(errors="ignore")
+            return jsonify({"error": "FFmpeg conversion failed", "details": err}), 500
 
-            if proc.returncode != 0:
-                err = proc.stderr.decode(errors="ignore")
-                return jsonify({"error": "FFmpeg conversion failed", "details": err}), 500
+        # ------------------------------
+        # 3. Extract tempo + pitch
+        # ------------------------------
+        tempo, pitch = extract_audio_features(temp_wav.name)
 
-            tempo, pitch = extract_audio_features(temp_wav.name)
-        else:
-            tempo, pitch = 0, 0
+        # ------------------------------
+        # 4. Whisper speech-to-text
+        # ------------------------------
+        segments, info = model.transcribe(temp_wav.name)
 
+        text = " ".join(seg.text for seg in segments).strip()
+
+        # ------------------------------
+        # 5. Mood Detection
+        # ------------------------------
         mood = analyze_mood_with_audio(text, tempo, pitch)
+
+        # ------------------------------
+        # 6. Get Recommendations
+        # ------------------------------
         songs = get_recommendations(mood, language)
 
         return jsonify({
@@ -100,6 +118,7 @@ def analyze_voice():
         return jsonify({"error": "Server error", "details": str(e)}), 500
 
     finally:
+        # Cleanup temp files
         for tf in (temp_webm, temp_wav):
             try:
                 if tf and os.path.exists(tf.name):
