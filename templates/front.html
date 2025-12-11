@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Moodify - Let Your Mood Choose the Music</title>
+    <title>Moodify - Let Your Mood Choose Music</title>
+
+    <!-- Browser Whisper Tiny -->
+    <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
 
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -57,38 +60,54 @@
 
 <body>
 
-    <h1>Moodify — Let Your Mood Choose Music 🎵</h1>
+<h1>Moodify — Let Your Mood Choose Music 🎵</h1>
 
-    <input type="text" id="textInput" placeholder="Type your mood...">
+<input type="text" id="textInput" placeholder="Type your mood...">
 
-    <br>
-    <select id="languageSelect">
-        <option value="english">English</option>
-        <option value="hindi">Hindi</option>
-        <option value="telugu">Telugu</option>
-    </select>
+<br>
+<select id="languageSelect">
+    <option value="english">English</option>
+    <option value="hindi">Hindi</option>
+    <option value="telugu">Telugu</option>
+</select>
 
-    <br>
-    <button id="analyzeTextButton">Analyze Mood</button>
-    <button id="clearButton">Clear</button>
+<br>
+<button id="analyzeTextButton">Analyze Mood</button>
+<button id="clearButton">Clear</button>
 
-    <br><br>
-    <button id="recordButton">🎙 Start Recording</button>
+<br><br>
+<button id="recordButton">🎙 Start Recording</button>
+<p id="status"></p>
 
-    <p id="status"></p>
-
-    <h2 id="moodResult"></h2>
-    <div id="songList"></div>
+<h2 id="moodResult"></h2>
+<div id="songList"></div>
 
 <script>
 let mediaRecorder;
 let chunks = [];
 let isRecording = false;
+let whisperModel = null;
 
 // ---------------------------
-// Start / Stop Recording
+// Load Whisper Tiny (browser)
 // ---------------------------
-document.getElementById("recordButton").onclick = function () {
+async function loadWhisper() {
+    document.getElementById("status").innerText = "Loading voice model... ⏳";
+
+    const processor = await transformers.autoProcessor.from_pretrained("Xenova/whisper-tiny.en");
+    const model = await transformers.autoModelForSpeechSeq2Seq.from_pretrained("Xenova/whisper-tiny.en");
+
+    whisperModel = { processor, model };
+
+    document.getElementById("status").innerText = "Model ready 🎤";
+}
+loadWhisper();
+
+
+// ---------------------------
+// Start Recording
+// ---------------------------
+document.getElementById("recordButton").onclick = () => {
     if (!isRecording) startRecording();
     else stopRecording();
 };
@@ -109,6 +128,10 @@ async function startRecording() {
     mediaRecorder.onstop = () => processAudio();
 }
 
+
+// ---------------------------
+// Stop Recording
+// ---------------------------
 function stopRecording() {
     mediaRecorder.stop();
     isRecording = false;
@@ -118,15 +141,27 @@ function stopRecording() {
     document.getElementById("status").innerText = "Processing audio...";
 }
 
+
 // ---------------------------
-// Convert audio → Base64
+// Convert, Transcribe & Send
 // ---------------------------
 async function processAudio() {
     const blob = new Blob(chunks, { type: "audio/webm" });
-    const reader = new FileReader();
 
-    reader.onloadend = () => {
+    // Convert audio to base64 for backend
+    const reader = new FileReader();
+    reader.onloadend = async () => {
         let base64Audio = reader.result.split(",")[1];
+
+        // Convert to ArrayBuffer for Whisper
+        const audioBuffer = await blob.arrayBuffer();
+
+        // Prepare audio tensor
+        const { processor, model } = whisperModel;
+        const audioTensor = await processor(audioBuffer);
+        const output = await model.generate(audioTensor.input_features);
+
+        const text = output[0].generated_text.trim();
 
         document.getElementById("status").innerText = "Sending to server...";
 
@@ -136,6 +171,7 @@ async function processAudio() {
             contentType: "application/json",
             data: JSON.stringify({
                 audio: base64Audio,
+                text: text,
                 language: document.getElementById("languageSelect").value
             }),
             success: showResults,
@@ -146,10 +182,11 @@ async function processAudio() {
     reader.readAsDataURL(blob);
 }
 
+
 // ---------------------------
-// Text Input → Mood Detection
+// Text Input Mood Detection
 // ---------------------------
-document.getElementById("analyzeTextButton").onclick = function () {
+document.getElementById("analyzeTextButton").onclick = () => {
     let text = document.getElementById("textInput").value.trim();
     let language = document.getElementById("languageSelect").value;
 
@@ -164,21 +201,18 @@ document.getElementById("analyzeTextButton").onclick = function () {
     });
 };
 
+
 // ---------------------------
-// Display results
+// Display Results
 // ---------------------------
 function showResults(response) {
-    console.log(response);
     if (response.error) {
         document.getElementById("moodResult").innerText = "Error: " + response.error;
         return;
     }
 
-    document.getElementById("status").innerText = "";
-
     document.getElementById("moodResult").innerHTML =
-        `Detected Mood: <b>${response.mood.toUpperCase()}</b><br>
-         <small>Text: ${response.text || "Voice detected"}</small>`;
+        `Detected Mood: <b>${response.mood.toUpperCase()}</b>`;
 
     let list = document.getElementById("songList");
     list.innerHTML = "";
@@ -202,10 +236,11 @@ function showResults(response) {
     });
 }
 
+
 // ---------------------------
-// Clear button
+// Clear Button
 // ---------------------------
-document.getElementById("clearButton").onclick = function () {
+document.getElementById("clearButton").onclick = () => {
     document.getElementById("textInput").value = "";
     document.getElementById("moodResult").innerHTML = "";
     document.getElementById("songList").innerHTML = "";
