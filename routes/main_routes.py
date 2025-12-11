@@ -1,66 +1,92 @@
-from flask import Blueprint, request, jsonify, render_template
+import os
+import base64
+import json
+import tempfile
+import subprocess
+from flask import Blueprint, request, jsonify
+
 from utils.mood_analysis import analyze_mood_with_audio
 from utils.audio_features import extract_audio_features
-from utils.spotify_helper import get_songs_by_mood_and_language
-import base64, io, os
-from pydub import AudioSegment
+from utils.spotify_recommender import get_recommendations
 
-main_bp = Blueprint("main", __name__)
+main_bp = Blueprint("main_bp", __name__)
 
-@main_bp.route("/")
-def home():
-    return render_template("front.html")
 
+# ------------------------------
+#   TEXT ANALYSIS ROUTE
+# ------------------------------
 @main_bp.route("/text", methods=["POST"])
-def text_input():
+def analyze_text():
     data = request.get_json()
     text = data.get("text", "")
-    language = data.get("language", "english").lower()
+    language = data.get("language", "english")
+
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
 
     mood = analyze_mood_with_audio(text)
-    songs = get_songs_by_mood_and_language(mood, language)
+    songs = get_recommendations(mood, language)
 
     return jsonify({
-        "text": text,
         "mood": mood,
         "songs": songs
     })
 
+
+# ------------------------------
+#   VOICE ANALYSIS ROUTE
+# ------------------------------
 @main_bp.route("/voice", methods=["POST"])
-def voice_input():
+def analyze_voice():
     try:
         data = request.get_json()
 
         text = data.get("text", "")
-        audio_base64 = data.get("audio")   # <-- FIXED
-        language = data.get("language", "english").lower()
+        audio_b64 = data.get("audio", "")
+        language = data.get("language", "english")
 
-        if not audio_base64:
+        if not audio_b64:
             return jsonify({"error": "No audio received"}), 400
 
-        # Decode audio
-        audio_data = base64.b64decode(audio_base64)
-        audio = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
-        audio = audio.set_frame_rate(16000).set_channels(1)
+        # Convert base64 → raw bytes
+        audio_bytes = base64.b64decode(audio_b64)
 
-        temp_path = "temp_audio.wav"
-        audio.export(temp_path, format="wav")
+        # Create temp files
+        temp_webm = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
+        temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
 
-        tempo, pitch = extract_audio_features(temp_path)
+        # Save webm
+        with open(temp_webm.name, "wb") as f:
+            f.write(audio_bytes)
 
+        # Convert webm → wav using FFmpeg (Render supports FFmpeg)
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", temp_webm.name,
+            "-ac", "1",
+            "-ar", "16000",
+            temp_wav.name
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Extract tempo + pitch
+        tempo, pitch = extract_audio_features(temp_wav.name)
+
+        # Detect mood using text + audio signals
         mood = analyze_mood_with_audio(text, tempo, pitch)
-        songs = get_songs_by_mood_and_language(mood, language)
 
-        os.remove(temp_path)
+        # Get songs
+        songs = get_recommendations(mood, language)
+
+        # Cleanup
+        os.remove(temp_webm.name)
+        os.remove(temp_wav.name)
 
         return jsonify({
-            "text": text,
+            "mood": mood,
             "tempo": tempo,
             "pitch": pitch,
-            "mood": mood,
             "songs": songs
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
